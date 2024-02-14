@@ -22,7 +22,7 @@ jobs:
     - name: Azure login
       uses: azure/login@v1
       with:
-        creds: ${{ secrets.managedEnv20240213223844_SPN }}
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
     - name: Container App deploy
       uses: azure/container-apps-deploy-action@v1
       with:
