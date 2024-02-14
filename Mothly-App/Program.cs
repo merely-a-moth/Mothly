@@ -1,9 +1,12 @@
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.ResponseCompression;
 using Mothly_App.Components;
 using Mothly_App.Components.Account;
 using Mothly_App.Data;
+using Mothly_App.Hubs;
+using Mothly_App.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +18,8 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<IdentityUserAccessor>();
 builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
+
+builder.Services.AddSingleton<IChatService, ChatService>();
 
 builder.Services.AddAuthentication(options =>
     {
@@ -35,6 +40,12 @@ builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.Requ
 
 builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
 
+builder.Services.AddResponseCompression(opts =>
+{
+    opts.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
+         new[] { "application/octet-stream" });
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -50,9 +61,11 @@ else
 }
 
 app.UseHttpsRedirection();
-
+app.UseResponseCompression();
 app.UseStaticFiles();
 app.UseAntiforgery();
+
+app.MapHub<ChatHub>("/chathub");
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
