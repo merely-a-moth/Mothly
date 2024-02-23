@@ -1,0 +1,226 @@
+﻿@page "/Pages/CharacterSheet"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.AspNetCore.Authorization
+@using Mothly_App.Components.Account
+@using Mothly_App.Data
+@using Mothly_App.Services
+@using Mothly_Models
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider GetAuthenticationStateAsync
+@inject UserManager<ApplicationUser> UserManager;
+@inject IChatService ChatService
+
+<h3>Character Sheet</h3>
+
+<AuthorizeView>
+    <NotAuthorized>
+        <div>Please login.</div>
+    </NotAuthorized>
+    <Authorized>
+        <EditForm Context="EditContext" Model="CurrentCharacter" OnValidSubmit="Submit" FormName="Character">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+            
+            <div><label>
+                Name:
+                @if (EditMode)
+                {
+                    <InputText @bind-Value="CurrentCharacter!.Name" />
+                }
+                else
+                {
+                    <span>@CurrentCharacter!.Name</span>    
+                }
+                </label></div>
+            
+            <div><label>
+                 Description:
+                 @if (EditMode)
+                    {
+                        <InputTextArea @bind-Value="CurrentCharacter!.Description" />
+                    }
+                    else
+                    {
+                        <span>@CurrentCharacter!.Description</span>
+                    }
+                    
+            </label></div>
+            
+            <div>Refresh (current/total): @CurrentCharacter.Refresh.Current / @CurrentCharacter.Refresh.Total</div>
+
+            <div><h4>Aspects:</h4>
+                <ul id="aspectList">
+                    @foreach (var aspect in CurrentCharacter!.Aspects)
+                    {
+                        <li>@aspect.Name</li>
+                    }
+                    @if (EditMode)
+                    {
+                        <li><InputText @bind-Value="NewAspect"> </InputText><button @onclick="AddAspect">Add Aspect</button></li>
+                    }
+                </ul>
+            </div>
+            <div>
+                <h4>Skills:</h4>
+                <ul id="skillList">
+                    @foreach (var skill in CurrentCharacter!.Skills)
+                    {
+                        <li>@skill.Name @skill.Value</li>
+                    }
+                    @if (EditMode)
+                    {
+                        <li><InputText @bind-Value="NewSkill"> </InputText><button @onclick="AddSkill">Add Skill</button></li>
+                    }
+                </ul>
+            </div>
+            <div>
+                <h4>Stunts:</h4>
+                <ul id="stuntList">
+                    @foreach (var stunt in CurrentCharacter!.Stunts)
+                    {
+                        <li>@stunt.Name @stunt.Description</li>
+                    }
+                    @if (EditMode)
+                    {
+                        <li>
+                            <InputSelect @bind-Value=SelectedStunt>
+                                @foreach (var stunt in AvailableStunts)
+                                {
+                                    <option value="@stunt.Description">@stunt.Name</option>
+                                }
+                            </InputSelect>
+                            <button @onclick="AddStunt">Add Stunt</button>
+                        </li>
+                    }
+                </ul>
+            </div>
+            <div>
+                <h4>Extras:</h4>
+                <ul id="extrasList">
+                    @foreach (var extra in CurrentCharacter!.Extras)
+                    {
+                        <li>@extra</li>
+                    }
+                </ul>
+            </div>
+            @foreach (var stressTrack in CurrentCharacter!.StressTracks)
+            {
+                <h4>@stressTrack.Name</h4>
+                @foreach (var level in stressTrack.Levels)
+                {
+                    @level.Key <span style="border-style: solid; display:inline-block; width: 25px; height: 25px; text-align: center;">
+                        @if (level.Value)
+                        {
+                            <span>&#10003;</span>
+                        }
+                        else
+                        {
+                            <span>&nbsp;</span>
+                        }
+                    </span>
+                }
+            }
+
+            <div>
+                <h4>Consequences:</h4>
+                <ul>
+                @foreach (var cons in CurrentCharacter!.Consequences)
+                {
+                    <li style="border-style: solid; display: inline-block; width: 250px;">
+                        <span>@((int)cons.Level) @cons.Level &nbsp;&nbsp;&nbsp;</span>
+                        @if (cons.Filled)
+                        {
+                            <span>@cons.Name</span>
+                        }
+                    </li>
+                }
+                </ul>
+            </div>
+
+            @if (EditMode)
+            {
+                <div><button type="submit">Save Changes</button></div>
+            }
+            
+        </EditForm>
+    </Authorized>
+</AuthorizeView>
+
+
+@code {
+    [SupplyParameterFromForm]
+    public Character CurrentCharacter { get; set; }
+
+    [SupplyParameterFromForm]
+    public string NewAspect { get; set; } = "";
+
+    [SupplyParameterFromForm]
+    public string NewSkill { get; set; } = "";
+
+    public List<IStunt> AvailableStunts { get; set; }
+    public IStunt SelectedStunt { get; set; }
+    public bool EditMode { get; set; } = false;
+
+    protected override void OnInitialized()
+    {
+        AvailableStunts = new StuntCollection()
+        {
+            new StringBonusStunt() { Name = "Hit More", Skill = new Skill { Name = "Swordfighting" }, Situation = "angry"},
+            new StringActivatedStunt() { Name = "Berserk", Period = "Daily", Situation = "pissed off", Outcome = "Use Swordfighting skill instead of any other skill" }
+        };
+
+        CurrentCharacter ??= new Character();
+
+        CurrentCharacter.Name = "Warry the Warrior";
+
+        CurrentCharacter.Aspects.Add(new Aspect { Name="Shiny", Type=AspectType.Internal });
+        CurrentCharacter.Skills.Add(new Skill { Name = "Swordfighting", Value = 4 });
+        CurrentCharacter.Stunts.Add(new StringBonusStunt() { Name = "Hit More", Skill = new Skill { Name = "Swordfighting" }, Situation = "angry" });
+        CurrentCharacter.Extras.Add(new StringExtra());
+
+        CurrentCharacter.StressTracks.Add(new StressTrack()
+            {
+                Name = "Physical Stress",
+                Levels = new StressTrackLevels() { { 1, true }, { 2, false } }
+            }
+        );
+        CurrentCharacter.StressTracks.Add(new StressTrack()
+            {
+                Name = "Mental Stress",
+                Levels = new StressTrackLevels() { { 1, true }, { 2, true }, { 3, false } }
+            }
+        );
+        CurrentCharacter.Consequences.Add(new Consequence() { Level = ConsequenceLevel.Mild });
+        CurrentCharacter.Consequences.Add(new Consequence() { Level = ConsequenceLevel.Mild });
+        CurrentCharacter.Consequences.Add(new Consequence() { Level = ConsequenceLevel.Moderate, Filled = true, Name="Walk with a limp" });
+        CurrentCharacter.Consequences.Add(new Consequence() { Level = ConsequenceLevel.Severe });
+    }
+
+    private void Submit()
+    {
+
+    }
+
+    private void AddAspect()
+    {
+        if (NewAspect.Trim() == "") { return; }
+        CurrentCharacter.Aspects.Add(new CharacterAspect { Name = NewAspect });
+        NewAspect = "";
+    }
+
+    private void AddSkill()
+    {
+        if (NewSkill.Trim() == "") { return; }
+        CurrentCharacter.Skills.Add(new Skill { Name = NewSkill });
+        NewSkill = "";
+    }
+
+    private void AddStunt()
+    {
+        if (SelectedStunt == null) { return; }
+        CurrentCharacter.Stunts.Add(SelectedStunt);
+        SelectedStunt = null;
+    }
+}
