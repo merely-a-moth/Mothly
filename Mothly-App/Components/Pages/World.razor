@@ -1,0 +1,185 @@
+﻿@page "/Pages/World"
+
+@using Blazor.Extensions
+@using Blazor.Extensions.Canvas
+@using Blazor.Extensions.Canvas.Canvas2D
+@using Microsoft.AspNetCore.SignalR.Client
+@inject NavigationManager Navigation
+@using Models
+@using Mothly_App.Services
+@using System.Drawing
+@inject IJSRuntime JsRuntime;
+@inject Field WorldField;
+
+<AuthorizeView>
+    <NotAuthorized>
+        <div>Please login.</div>
+    </NotAuthorized>
+    <Authorized>
+        <FloatWindow hidden="@HideCharacterSheet"><CharacterSheet></CharacterSheet></FloatWindow>
+        <FloatWindow hidden="@HideChat"><Chat></Chat></FloatWindow>
+
+        <span>Current Velocity: (@PlayerBall.XVel, @PlayerBall.YVel)</span>
+        <button @onclick="AddVelocity">Add Velocity</button>
+        <div id="canvasHolder" style="position: fixed; width: 100%; height: 100%">
+            <BECanvas Width="600" Height="400" @ref="CanvasRef"></BECanvas>
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private Canvas2DContext ctx;
+    protected BECanvasComponent CanvasRef;
+    private DateTime LastRender;
+    private Models.Ball PlayerBall = new Models.Ball(
+                    x: 200,
+                    y: 200,
+                    xVel: 0.0,
+                    yVel: 0.0,
+                    radius: 10,
+                    color: "0x00FF00"
+                );
+
+    public bool HideCharacterSheet { get; set; }
+    public bool HideChat { get; set; }
+
+    private HubConnection? hubConnection;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/controlhub"))
+            .Build();
+
+        hubConnection.On<Guid, PointF>("UpdateMobile", (id, newPosition) =>
+        {
+            InvokeAsync(StateHasChanged);
+        });
+        hubConnection.On<Guid, PointF>("AddMobile", (id, newPosition) =>
+        {
+            var ball = new Ball(
+                x: newPosition.X,
+                y: newPosition.Y,
+                xVel: 0.0,
+                yVel: 0.0,
+                radius: 10,
+                color: "0x0000FF"
+            );
+            ball.ID = id;
+            PlayerBall = ball;
+            WorldField.AddPlayerBall(ball);
+        });
+
+        await hubConnection.StartAsync();
+
+        this.ctx = await CanvasRef.CreateCanvas2DAsync();
+        await JsRuntime.InvokeAsync<object>("initRenderJS", DotNetObjectReference.Create(this));
+        await JsRuntime.InvokeVoidAsync("addKeyboardListenerEvent");
+        await base.OnInitializedAsync();
+    }
+
+    [JSInvokable]
+    public void ResizeInBlazor(double width, double height) => WorldField.Resize(width, height);
+
+    [JSInvokable]
+    public async ValueTask RenderInBlazor(float timeStamp)
+    {
+        if (WorldField.Balls.Count == 0)
+        {
+            //BallField.AddRandomBalls(50);
+            //WorldField.AddPlayerBall(PlayerBall);
+            await hubConnection!.SendAsync("SendAddMobile", PlayerBall.ID, new PointF((float)PlayerBall.X, (float)PlayerBall.Y));
+        }
+
+        WorldField.StepForward();
+        await hubConnection!.SendAsync("SendUpdateMobile", PlayerBall.ID, new PointF((float)PlayerBall.X, (float)PlayerBall.Y));
+        StateHasChanged();
+
+        double fps = 1.0 / (DateTime.Now - LastRender).TotalSeconds;
+        LastRender = DateTime.Now;
+
+        await this.ctx.BeginBatchAsync();
+        await this.ctx.ClearRectAsync(0, 0, WorldField.Width, WorldField.Height);
+        await this.ctx.SetFillStyleAsync("#003366");
+        await this.ctx.FillRectAsync(0, 0, WorldField.Width, WorldField.Height);
+        await this.ctx.SetFontAsync("26px Segoe UI");
+        await this.ctx.SetFillStyleAsync("#FFFFFF");
+        await this.ctx.FillTextAsync("World", 10, 30);
+        await this.ctx.SetFontAsync("16px consolas");
+        await this.ctx.FillTextAsync($"FPS: {fps:0.000}", 10, 50);
+        await this.ctx.SetStrokeStyleAsync("#FFFFFF");
+        foreach (var ball in WorldField.Balls)
+        {
+            await this.ctx.BeginPathAsync();
+            await this.ctx.ArcAsync(ball.X, ball.Y, ball.Radius, 0, 2 * Math.PI, false);
+            await this.ctx.SetFillStyleAsync(ball.Color);
+            await this.ctx.FillAsync();
+            await this.ctx.StrokeAsync();
+        }
+        await this.ctx.EndBatchAsync();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task JsKeyDown(KeyboardEventArgs e)
+    {
+
+        switch (e.Key)
+        {
+            case "ArrowUp":
+                PlayerBall.YVel = -1;
+                break;
+            case "ArrowDown":
+                PlayerBall.YVel = 1;
+                break;
+            case "ArrowLeft":
+                PlayerBall.XVel = -1;
+                break;
+            case "ArrowRight":
+                PlayerBall.XVel = 1;
+                break;
+        }
+    }
+
+    [JSInvokable]
+    public async Task JsKeyUp(KeyboardEventArgs e)
+    {
+
+        switch (e.Key)
+        {
+            case "ArrowUp":
+                PlayerBall.YVel = 0;
+                break;
+            case "ArrowDown":
+                PlayerBall.YVel = 0;
+                break;
+            case "ArrowLeft":
+                PlayerBall.XVel = 0;
+                break;
+            case "ArrowRight":
+                PlayerBall.XVel = 0;
+                break;
+            case "c":
+                HideCharacterSheet = false;
+                break;
+            case "C":
+                HideCharacterSheet = true;
+                break;
+            case "/":
+                HideChat = false;
+                break;
+            case "\\":
+                HideChat = true;
+                break;
+        }
+    }
+
+    public void AddVelocity()
+    {
+        PlayerBall.XVel += 1.0;
+        StateHasChanged();
+    }
+
+}

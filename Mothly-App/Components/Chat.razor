@@ -1,0 +1,96 @@
+﻿@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.AspNetCore.Authorization
+@using Mothly_App.Components.Account
+@using Mothly_App.Data
+@using Mothly_App.Services
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider GetAuthenticationStateAsync
+@inject UserManager<ApplicationUser> UserManager;
+@inject IChatService ChatService
+@implements IAsyncDisposable
+
+<AuthorizeView>
+    <NotAuthorized>
+        <div>Please login.</div>
+    </NotAuthorized>
+    <Authorized>
+        <div class="form-group">
+            <label>
+                Message:
+                <input @bind=messageInput @bind:event="oninput" @onkeyup="HandleMessageKey" size="50" />
+            </label>
+            <button @onclick="Send" disabled="@(!IsConnected)">Send</button>
+        </div>
+        
+        <hr>
+
+        <ul id="messagesList">
+            @foreach (var message in ChatService.Messages)
+            {
+                <li>@message</li>
+            }
+        </ul>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private HubConnection? hubConnection;
+    private string? messageInput;
+
+    protected override async Task OnInitializedAsync()
+    {
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/chathub"))
+            .Build();
+
+        hubConnection.On<string, string>("ReceiveMessage", (user, message) =>
+        {
+            InvokeAsync(StateHasChanged);
+        });
+
+        await hubConnection.StartAsync();
+    }
+
+    private async Task Send()
+    {
+        var authstate = await GetAuthenticationStateAsync.GetAuthenticationStateAsync();
+        var user = authstate.User;
+
+        if (user == null || user.Identity == null || user.Identity.Name == null)
+        { return; }
+
+        var appUser = await UserManager.FindByNameAsync(user.Identity.Name);
+
+        if (appUser == null || appUser.ShortName == null || messageInput == null) { return; }
+
+        ChatService.AddMessage(appUser.ShortName, messageInput);
+
+        if (hubConnection is not null)
+        {
+            await hubConnection.SendAsync("SendMessage", hubConnection.ConnectionId, messageInput);
+        }
+
+        messageInput = "";
+    }
+
+    private async Task HandleMessageKey(KeyboardEventArgs e)
+    {
+        if ((e.Code == "Enter" || e.Code == "NumpadEnter") && messageInput?.Length > 0)
+        {
+            await Send();
+        }
+    }
+
+    public bool IsConnected =>
+        hubConnection?.State == HubConnectionState.Connected;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+}

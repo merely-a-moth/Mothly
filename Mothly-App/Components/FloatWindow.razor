@@ -1,0 +1,30 @@
+﻿<div draggable="true"
+    @ondragend="OnDragEnd" @ondragstart="OnDragStart"
+    style="@(Hidden ? "display: None;" : "") position:absolute; z-index: 1000; top: @(offsetY)px; left: @(offsetX)px; border-color: black; background-color: white; border-style: solid; padding: 10px;">
+    @Hidden 
+    @ChildContent
+</div>
+@code {
+
+    [Parameter]
+    public RenderFragment ChildContent { get; set; }
+
+    [Parameter]
+    public bool Hidden { get; set; }
+
+
+    private double startX, startY, offsetX, offsetY;
+
+    private void OnDragStart(DragEventArgs args)
+    {
+        startX = args.ClientX;
+        startY = args.ClientY;
+    }
+
+    private void OnDragEnd(DragEventArgs args)
+    {
+        offsetX += args.ClientX - startX;
+        offsetY += args.ClientY - startY;
+    }
+
+}

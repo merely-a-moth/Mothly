@@ -7,6 +7,7 @@ using Mothly_App.Components.Account;
 using Mothly_App.Data;
 using Mothly_App.Hubs;
 using Mothly_App.Services;
+using Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +21,8 @@ builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
 
 builder.Services.AddSingleton<IChatService, ChatService>();
+builder.Services.AddSingleton<IControlService, ControlService>();
+builder.Services.AddSingleton<Field>();
 
 builder.Services.AddAuthentication(options =>
     {
@@ -66,6 +69,7 @@ app.UseStaticFiles();
 app.UseAntiforgery();
 
 app.MapHub<ChatHub>("/chathub");
+app.MapHub<ControlHub>("/controlhub");
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
